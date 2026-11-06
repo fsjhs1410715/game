@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>⚔️ 3D Boss Battle — 可操作版</title>
+<style>
+*{box-sizing:border-box} html,body{margin:0;height:100%;overflow:hidden;background:#070b14;color:#eef5ff;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+body{display:flex;align-items:center;justify-content:center}
+#game{position:relative;width:min(1500px,100vw);height:min(900px,100vh);overflow:hidden;background:
+radial-gradient(circle at 50% 30%,#203b5e 0,#101b2d 34%,#060a12 78%);user-select:none}
+canvas{position:absolute;inset:0;width:100%;height:100%}
+.hud{position:absolute;z-index:5;left:18px;right:18px;top:14px;display:flex;gap:10px;align-items:center;pointer-events:none}
+.panel{background:rgba(7,12,23,.78);border:1px solid rgba(150,190,255,.22);box-shadow:0 10px 30px #0008;backdrop-filter:blur(8px);border-radius:14px;padding:9px 12px}
+.bossBox{position:absolute;z-index:5;top:14px;left:50%;transform:translateX(-50%);width:min(560px,52vw);text-align:center}
+.bossName{font-weight:900;font-size:18px;text-shadow:0 2px 6px #000}
+.bar{height:12px;background:#1b2535;border-radius:99px;overflow:hidden;margin-top:5px;border:1px solid #ffffff1c}
+.fill{height:100%;transition:width .15s;background:linear-gradient(90deg,#ff3158,#ff7b4b)}
+.phase{font-size:12px;color:#ffb7c3;margin-top:3px}
+.stats{display:flex;gap:8px;flex-wrap:wrap}.stat b{color:#fff}.stat{font-size:13px}
+.team{position:absolute;z-index:6;left:18px;bottom:18px;display:flex;gap:8px;pointer-events:auto}
+.card{width:145px;padding:9px;border-radius:14px;background:#091120dd;border:1px solid #ffffff20;cursor:pointer;transition:.15s}
+.card.active{border-color:#7ee7ff;box-shadow:0 0 0 2px #7ee7ff33,0 8px 25px #0009;transform:translateY(-5px)}
+.card .top{display:flex;justify-content:space-between;font-weight:800}.mini{font-size:11px;color:#a9bdd8}.miniBar{height:6px;background:#1d2939;border-radius:9px;overflow:hidden;margin-top:5px}.miniHp{height:100%;background:#35e28c}.miniEn{height:100%;background:#46a8ff}
+.controls{position:absolute;z-index:7;right:18px;bottom:18px;width:265px;pointer-events:none}
+.help{font-size:12px;line-height:1.6;color:#b9c9de}.key{display:inline-block;background:#172337;border:1px solid #42516a;border-bottom-width:2px;padding:1px 5px;border-radius:5px;color:white;margin:0 2px}
+.actions{position:absolute;z-index:8;right:300px;bottom:18px;display:flex;gap:8px;pointer-events:auto}
+button{border:0;color:#fff;background:#16243a;border:1px solid #ffffff22;border-radius:12px;padding:10px 13px;font-weight:800;cursor:pointer;box-shadow:0 5px 18px #0007}
+button:hover{background:#203454}button:disabled{opacity:.4;cursor:not-allowed}
+.skill{font-size:12px;color:#b9d8ff}.gold{color:#ffd76a;font-weight:900}
+.tip{position:absolute;z-index:9;left:50%;bottom:18px;transform:translateX(-50%);padding:7px 14px;border-radius:99px;background:#0009;font-size:13px;pointer-events:none}
+.shop{position:absolute;z-index:20;inset:0;display:none;align-items:center;justify-content:center;background:#02050bcc}
+.shop.open{display:flex}.shopBox{width:min(500px,90vw);background:#0b1322;border:1px solid #ffffff24;border-radius:20px;padding:22px;box-shadow:0 25px 70px #000}
+.shopGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.shopItem{text-align:left}.shopItem strong{display:block}.shopItem small{color:#9eb1ca}
+.toast{position:absolute;z-index:30;top:110px;left:50%;transform:translateX(-50%);background:#101c31ee;padding:10px 18px;border-radius:99px;border:1px solid #ffffff1e;opacity:0;transition:.2s;pointer-events:none}
+.toast.show{opacity:1}
+@media(max-width:900px){.card{width:115px}.controls{display:none}.actions{right:18px}.bossBox{width:55vw}.team{bottom:76px}}
+</style>
+</head>
+<body>
+<div id="game">
+<canvas id="c"></canvas>
+
+<div class="hud">
+  <div class="panel stats">
+    <div class="stat">⏱️ <b id="time">120</b>s</div>
+    <div class="stat">💰 <b class="gold" id="gold">100</b></div>
+    <div class="stat">🔥 Combo <b id="combo">0</b></div>
+    <div class="stat">🎯 <b id="lock">未鎖定</b></div>
+  </div>
+</div>
+
+<div class="bossBox panel">
+  <div class="bossName">👹 深淵巨獸 · BOSS</div>
+  <div class="bar"><div class="fill" id="bossHp"></div></div>
+  <div class="phase" id="phase">正常狀態</div>
+</div>
+
+<div class="team" id="team"></div>
+
+<div class="actions">
+  <button id="atk">⚔️ 普攻 <span class="skill">Space</span></button>
+  <button id="skill">✨ 技能 <span class="skill">Q</span></button>
+  <button id="guard">🛡️ 防禦 <span class="skill">E</span></button>
+  <button id="shopBtn">🛒 商店</button>
+</div>
+
+<div class="controls panel">
+  <div><b>🎮 操作方式</b></div>
+  <div class="help">
+    <span class="key">WASD</span> / 方向鍵：移動<br>
+    <span class="key">1</span><span class="key">2</span><span class="key">3</span>：切換角色<br>
+    <span class="key">Space</span>：普攻　<span class="key">Q</span>：技能<br>
+    <span class="key">E</span>：防禦　滑鼠點 Boss：鎖定
+  </div>
+</div>
+<div class="tip" id="tip">靠近 Boss 再攻擊！角色真的可以移動 🎮</div>
+<div class="toast" id="toast"></div>
+
+<div class="shop" id="shop">
+  <div class="shopBox">
+    <h2>🛒 戰鬥商店</h2>
+    <div>目前金幣：<b class="gold" id="shopGold">100</b></div>
+    <div class="shopGrid">
+      <button class="shopItem" data-buy="heal">❤️ 全隊治療<br><small>30 金幣 · 恢復 30 HP</small></button>
+      <button class="shopItem" data-buy="energy">⚡ 能量核心<br><small>35 金幣 · 全隊 +25 能量</small></button>
+      <button class="shopItem" data-buy="power">⚔️ 強化武器<br><small>60 金幣 · 全隊攻擊力 +12%</small></button>
+      <button class="shopItem" data-buy="reroll">🎲 隨機強化<br><small>45 金幣 · 隨機角色能力提升</small></button>
+    </div>
+    <br><button id="closeShop">返回戰場</button>
+  </div>
+</div>
+</div>
+
+<script>
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+const DPR=Math.min(devicePixelRatio||1,2);
+let W=0,H=0,keys={},last=performance.now(),timeLeft=120,gameOver=false;
+const world={w:1200,h:700};
+let gold=100,combo=0,locked=true,damageBoost=1,selected=0;
+const heroes=[
+ {id:'war',name:'⚔️ 戰士',short:'戰士',x:430,y:540,hp:180,max:180,en:70,maxEn:100,atk:25,speed:230,range:82,color:'#ff7a63',cool:0,skillCool:0,guard:0,alive:true},
+ {id:'tank',name:'🛡️ 坦克',short:'坦克',x:600,y:590,hp:260,max:260,en:60,maxEn:100,atk:17,speed:170,range:72,color:'#68b5ff',cool:0,skillCool:0,guard:0,alive:true},
+ {id:'archer',name:'🏹 弓手',short:'弓手',x:770,y:540,hp:125,max:125,en:90,maxEn:100,atk:18,speed:250,range:310,color:'#9dff7a',cool:0,skillCool:0,guard:0,alive:true}
+];
+const boss={x:600,y:190,hp:2200,max:2200,r:65,speed:78,atkCool:1.2,ult:false,enraged:false,flash:0};
+const particles=[],projectiles=[],texts=[];
+
+function resize(){W=canvas.clientWidth;H=canvas.clientHeight;canvas.width=W*DPR;canvas.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0)}
+addEventListener('resize',resize);resize();
+
+function sx(x){return (x/world.w)*W}
+function sy(y){return 65+(y/world.h)*(H-145)}
+function scale(y){return .72+(y/world.h)*.42}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+function toast(s){const el=document.getElementById('toast');el.textContent=s;el.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove('show'),1200)}
+function floatText(x,y,s,color='#fff'){texts.push({x,y,s,color,life:1})}
+function burst(x,y,color,n=10){for(let i=0;i<n;i++)particles.push({x,y,vx:(Math.random()-.5)*180,vy:(Math.random()-.5)*180,life:.5+Math.random()*.5,color})}
+
+function heroAttack(){
+ if(gameOver)return; const h=heroes[selected]; if(!h.alive)return;
+ if(h.cool>0)return;
+ const d=dist(h,boss);
+ if(d>h.range && h.id!=='archer'){toast('📍 太遠了，靠近 Boss！');return}
+ if(h.id==='archer'){
+   projectiles.push({x:h.x,y:h.y,tx:boss.x,ty:boss.y,dmg:h.atk*damageBoost,life:1.2,color:h.color});
+ }else{
+   dealBoss(h.atk*damageBoost,h.id==='war'?1.2:1);
+   burst(boss.x,boss.y,h.color,8);
+ }
+ h.cool=h.id==='archer'?.48:.62;
+ combo++;
+ h.en=Math.min(h.maxEn,h.en+10);
+}
+function heroSkill(){
+ if(gameOver)return; const h=heroes[selected]; if(!h.alive)return;
+ if(h.skillCool>0||h.en<35)return;
+ h.en-=35; h.skillCool=5;
+ if(h.id==='war'){
+   if(dist(h,boss)>125){toast('⚔️ 戰士技能需要接近 Boss');return}
+   dealBoss(h.atk*4*damageBoost,'war');burst(boss.x,boss.y,'#ff7a63',25);floatText(boss.x,boss.y-80,'重擊！','#ffb08f');
+ }else if(h.id==='tank'){
+   h.guard=2.8; h.hp=Math.min(h.max,h.hp+25); combo+=2; floatText(h.x,h.y-55,'護盾啟動','#7dc8ff');
+ }else{
+   for(let i=0;i<3;i++)projectiles.push({x:h.x,y:h.y,tx:boss.x+(i-1)*55,ty:boss.y,dmg:h.atk*2.3*damageBoost,life:1.2,color:'#d4ff9c'});
+   combo+=3; floatText(boss.x,boss.y-80,'三連射！','#caff9d');
+ }
+}
+function guard(){
+ const h=heroes[selected]; if(!h.alive)return;
+ h.guard=1.7; h.en=Math.min(h.maxEn,h.en+8); floatText(h.x,h.y-55,'防禦','#9fd7ff');
+}
+function dealBoss(dmg,kind){
+ if(boss.hp<=0)return;
+ boss.hp=Math.max(0,boss.hp-dmg);boss.flash=.12;floatText(boss.x+(Math.random()-0.5)*40,boss.y-75,`-${Math.round(dmg)}`,'#ffd2d2');
+ if(boss.hp<=boss.max*.5&&!boss.enraged){boss.enraged=true;boss.speed=105;toast('😡 Boss 暴走！');burst(boss.x,boss.y,'#ff375f',35)}
+ if(boss.hp<=boss.max*.2&&!boss.ult){boss.ult=true;toast('💀 Boss 終極技能！');}
+ if(boss.hp<=0){gameOver=true;gold+=180;toast('🏆 勝利！獲得 180 金幣');}
+}
+function bossAttack(dt){
+ if(boss.hp<=0)return;
+ const alive=heroes.filter(h=>h.alive); if(!alive.length){gameOver=true;return}
+ const target=alive.reduce((a,b)=>dist(b,boss)<dist(a,boss)?b:a);
+ const d=dist(target,boss);
+ const phaseMult=boss.ult?1.7:boss.enraged?1.3:1;
+ if(d>110){const dx=(target.x-boss.x)/d,dy=(target.y-boss.y)/d;boss.x+=dx*boss.speed*dt;boss.y+=dy*boss.speed*dt}
+ boss.atkCool-=dt;
+ if(boss.atkCool<=0 && d<145){
+   const dmg=22*phaseMult;
+   target.hp=Math.max(0,target.hp-(target.guard>0?dmg*.35:dmg));
+   target.guard=0; burst(target.x,target.y,'#ff405d',7);floatText(target.x,target.y-55,`-${Math.round(target.guard>0?dmg*.35:dmg)}`,'#ff9aad');
+   boss.atkCool=boss.ult?.75:boss.enraged?1.0:1.35;
+   if(target.hp<=0){target.alive=false;toast(`${target.name} 倒下了！`);if(selected===heroes.indexOf(target))switchHero(heroes.findIndex(h=>h.alive))}
+ }
+}
+function update(dt){
+ if(gameOver)return;
+ timeLeft-=dt;if(timeLeft<=0){timeLeft=0;gameOver=true;toast(boss.hp<=0?'🏆 勝利！':'⏱️ 時間到！')}
+ const h=heroes[selected];
+ heroes.forEach((x,i)=>{
+   x.cool=Math.max(0,x.cool-dt);x.skillCool=Math.max(0,x.skillCool-dt);x.guard=Math.max(0,x.guard-dt);x.en=Math.min(x.maxEn,x.en+dt*4);
+ });
+ if(h.alive){
+   let dx=0,dy=0;
+   if(keys.w||keys.ArrowUp)dy--; if(keys.s||keys.ArrowDown)dy++; if(keys.a||keys.ArrowLeft)dx--; if(keys.d||keys.ArrowRight)dx++;
+   if(dx||dy){const m=Math.hypot(dx,dy);h.x=clamp(h.x+dx/m*h.speed*dt,70,1130);h.y=clamp(h.y+dy/m*h.speed*dt,100,650)}
+ }
+ bossAttack(dt);
+ projectiles.forEach(p=>{p.life-=dt;const dx=p.tx-p.x,dy=p.ty-p.y,d=Math.hypot(dx,dy);const sp=650;p.x+=dx/d*sp*dt;p.y+=dy/d*sp*dt;if(d<35||p.life<=0){if(d<35)dealBoss(p.dmg);p.life=-1;burst(p.x,p.y,p.color,5)}});
+ for(let i=projectiles.length-1;i>=0;i--)if(projectiles[i].life<=0)projectiles.splice(i,1);
+ particles.forEach(p=>{p.life-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=100*dt});
+ for(let i=particles.length-1;i>=0;i--)if(particles[i].life<=0)particles.splice(i,1);
+ texts.forEach(t=>{t.life-=dt;t.y-=35*dt});for(let i=texts.length-1;i>=0;i--)if(texts[i].life<=0)texts.splice(i,1);
+ render();updateHUD();
+ requestAnimationFrame(loop);
+}
+function drawFloor(){
+ const g=ctx.createLinearGradient(0,70,0,H);g.addColorStop(0,'#101d31');g.addColorStop(1,'#070b13');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+ ctx.save();ctx.translate(W/2,85);ctx.transform(1,0,-.18,.48,0,0);
+ const grad=ctx.createRadialGradient(0,0,20,0,0,W*.55);grad.addColorStop(0,'#28476b');grad.addColorStop(1,'#0a1220');ctx.fillStyle=grad;ctx.fillRect(-W*.7,0,W*1.4,H*1.5);
+ ctx.strokeStyle='#79b6e51c';ctx.lineWidth=2;
+ for(let x=-900;x<900;x+=60){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H*2);ctx.stroke()}
+ for(let y=20;y<H*2;y+=70){ctx.beginPath();ctx.moveTo(-900,y);ctx.lineTo(900,y);ctx.stroke()}
+ ctx.restore();
+}
+function actor(x,y,r,color,label,sel=false,bossActor=false){
+ const X=sx(x),Y=sy(y),S=scale(y),R=r*S;
+ ctx.save();
+ ctx.globalAlpha=.35;ctx.fillStyle='#000';ctx.beginPath();ctx.ellipse(X,Y+R*.65,R*1.1,R*.38,0,0,Math.PI*2);ctx.fill();
+ ctx.globalAlpha=1;
+ if(sel&&!bossActor){ctx.strokeStyle='#8beaff';ctx.lineWidth=4;ctx.beginPath();ctx.arc(X,Y,R*1.35,0,Math.PI*2);ctx.stroke()}
+ const grd=ctx.createRadialGradient(X-R*.35,Y-R*.45,3,X,Y,R);grd.addColorStop(0,'#fff');grd.addColorStop(.16,color);grd.addColorStop(1,'#08101e');ctx.fillStyle=grd;
+ ctx.beginPath();ctx.arc(X,Y,R,0,Math.PI*2);ctx.fill();
+ ctx.font=`${Math.round(R*1.05)}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(label,X,Y-2);
+ ctx.restore();
+}
+function render(){
+ drawFloor();
+ const all=[...heroes.filter(h=>h.alive).map(h=>({o:h,b:false})),{o:boss,b:true}].sort((a,b)=>a.o.y-b.o.y);
+ all.forEach(({o,b})=>actor(o.x,o.y,b?boss.r:38,b?'#a83258':o.color,b?'👹':o.name[0],!b&&o===heroes[selected],b));
+ projectiles.forEach(p=>{ctx.fillStyle=p.color;ctx.shadowBlur=14;ctx.shadowColor=p.color;ctx.beginPath();ctx.arc(sx(p.x),sy(p.y),5,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0});
+ particles.forEach(p=>{ctx.globalAlpha=Math.max(0,p.life*1.5);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(sx(p.x),sy(p.y),3,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1});
+ texts.forEach(t=>{ctx.globalAlpha=t.life;ctx.fillStyle=t.color;ctx.font='bold 16px system-ui';ctx.textAlign='center';ctx.fillText(t.s,sx(t.x),sy(t.y));ctx.globalAlpha=1});
+ // boss telegraph
+ if(boss.enraged){ctx.strokeStyle='#ff335566';ctx.lineWidth=5;ctx.beginPath();ctx.arc(sx(boss.x),sy(boss.y),boss.r*scale(boss.y)*1.25,0,Math.PI*2);ctx.stroke()}
+ if(boss.flash>0){boss.flash-=.016;ctx.fillStyle='#fff6';ctx.beginPath();ctx.arc(sx(boss.x),sy(boss.y),boss.r*scale(boss.y),0,Math.PI*2);ctx.fill()}
+}
+function updateHUD(){
+ document.getElementById('time').textContent=Math.ceil(timeLeft);
+ document.getElementById('gold').textContent=gold;
+ document.getElementById('combo').textContent=combo;
+ document.getElementById('bossHp').style.width=(boss.hp/boss.max*100)+'%';
+ document.getElementById('phase').textContent=boss.hp<=boss.max*.2?'💀 終極階段：攻擊大幅提升':boss.hp<=boss.max*.5?'😡 狂暴階段：移動與攻擊加快':'🟢 正常狀態';
+ document.getElementById('lock').textContent=locked?'👹 Boss':'未鎖定';
+ document.getElementById('shopGold').textContent=gold;
+ document.getElementById('team').innerHTML=heroes.map((h,i)=>`<div class="card ${i===selected?'active':''}" data-i="${i}">
+   <div class="top"><span>${h.name}</span><span>${h.alive?'❤️':'💀'}</span></div>
+   <div class="mini">${h.alive?`HP ${Math.ceil(h.hp)}/${h.max}`:'已倒下'} · ${i===selected?'操作中':'按 '+(i+1)+' 切換'}</div>
+   <div class="miniBar"><div class="miniHp" style="width:${h.hp/h.max*100}%"></div></div>
+   <div class="miniBar"><div class="miniEn" style="width:${h.en/h.maxEn*100}%"></div></div>
+ </div>`).join('');
+ document.querySelectorAll('.card').forEach(c=>c.onclick=()=>switchHero(+c.dataset.i));
+}
+function switchHero(i){if(i<0||i>=heroes.length||!heroes[i].alive)return;selected=i;toast(`🎮 現在控制：${heroes[i].name}`);updateHUD()}
+function loop(now){const dt=Math.min(.035,(now-last)/1000);last=now;update(dt)}
+addEventListener('keydown',e=>{
+ keys[e.key]=true; const k=e.key.toLowerCase();
+ if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(e.key.toLowerCase()))e.preventDefault();
+ if(k==='1')switchHero(0);if(k==='2')switchHero(1);if(k==='3')switchHero(2);
+ if(e.key===' ')heroAttack();if(k==='q')heroSkill();if(k==='e')guard();
+ if(k==='b')document.getElementById('shop').classList.add('open');
+});
+addEventListener('keyup',e=>keys[e.key]=false);
+canvas.addEventListener('click',e=>{
+ const r=canvas.getBoundingClientRect(),mx=(e.clientX-r.left)/r.width*W,my=e.clientY-r.top;
+ const bx=sx(boss.x),by=sy(boss.y);
+ if(Math.hypot(mx-bx,my-by)<90){locked=true;toast('🎯 已鎖定 Boss')}
+});
+document.getElementById('atk').onclick=heroAttack;
+document.getElementById('skill').onclick=heroSkill;
+document.getElementById('guard').onclick=guard;
+document.getElementById('shopBtn').onclick=()=>document.getElementById('shop').classList.add('open');
+document.getElementById('closeShop').onclick=()=>document.getElementById('shop').classList.remove('open');
+document.querySelectorAll('[data-buy]').forEach(b=>b.onclick=()=>{
+ const type=b.dataset.buy, cost={heal:30,energy:35,power:60,reroll:45}[type];
+ if(gold<cost){toast('💰 金幣不足');return}
+ gold-=cost;
+ if(type==='heal')heroes.forEach(h=>h.hp=Math.min(h.max,h.hp+30));
+ if(type==='energy')heroes.forEach(h=>h.en=Math.min(h.maxEn,h.en+25));
+ if(type==='power')damageBoost*=1.12;
+ if(type==='reroll'){const h=heroes[Math.floor(Math.random()*heroes.length)];h.max+=18;h.hp=Math.min(h.max,h.hp+30);h.atk+=4;toast(`🎲 ${h.name} 獲得隨機強化！`)}
+ updateHUD();
+});
+updateHUD();requestAnimationFrame(loop);
+</script>
+</body>
+</html>
